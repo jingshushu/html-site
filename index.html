@@ -241,9 +241,8 @@
             const status = reactive({ processing: false, current: 0, total: 0 });
             const isExporting = ref(false);
             const pdfImages = ref([]);
-            const hoverImage = ref(null); // 悬停时的图片
+            const hoverImage = ref(null); 
             
-            // 格子数据：根据最大可能的格子数（9+3=12）初始化
             const gridData = ref(new Array(12).fill(null));
             
             const config = reactive({
@@ -260,25 +259,19 @@
                 exportScale: '2'
             });
 
-            // 获取当前布局需要的格子数量
             const currentSlotCount = computed(() => {
-                if (config.layout === 'mixed-col') return 12; // 9 + 3
+                if (config.layout === 'mixed-col') return 12; 
                 if (config.layout === 'col-2') return 2;
                 if (config.layout === 'col-3') return 3;
                 return 12;
             });
 
-            // 点击图片自动填入空位
             const autoFillSlot = (imgData) => {
                 const maxSlots = currentSlotCount.value;
-                // 找到第一个是 null 的索引
                 const emptyIndex = gridData.value.findIndex((val, idx) => val === null && idx < maxSlots);
                 
                 if (emptyIndex !== -1) {
                     gridData.value[emptyIndex] = imgData;
-                } else {
-                    // 如果满了，可以选择替换最后一个，或者不做操作。这里不做操作。
-                    // alert("当前布局格子已满，请点击格子右上角删除后再添加");
                 }
             };
 
@@ -308,7 +301,6 @@
                 status.processing = true;
                 status.current = 0;
                 pdfImages.value = [];
-                // 上传时不自动清空，防止用户误操作？或者清空，根据习惯。这里不清空。
                 
                 try {
                     const arrayBuffer = await file.arrayBuffer();
@@ -317,6 +309,7 @@
 
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const page = await pdf.getPage(i);
+                        // 提高 scale 保证清晰度
                         const viewport = page.getViewport({ scale: 2.0 }); 
                         const canvas = document.createElement('canvas');
                         const context = canvas.getContext('2d');
@@ -324,7 +317,8 @@
                         canvas.width = viewport.width;
 
                         await page.render({ canvasContext: context, viewport: viewport }).promise;
-                        pdfImages.value.push(canvas.toDataURL('image/jpeg', 0.9));
+                        // 使用 JPEG 格式，保证较小的文件体积
+                        pdfImages.value.push(canvas.toDataURL('image/jpeg', 0.9)); 
                         status.current = i;
                     }
                 } catch (err) {
@@ -366,27 +360,23 @@
 
             const changeLayout = (newLayout) => {
                 config.layout = newLayout;
-                // 切换布局时，不保留之前的数据，或者保留？为了体验更好，保留数据
-                // 但如果从 12 切到 2，只有前2个会显示。
             };
 
             const downloadImage = async () => {
                 const element = document.getElementById('canvas-area');
                 
-                // 1. 进入导出模式（CSS 会隐藏虚线、删除按钮、序号）
                 isExporting.value = true;
                 
-                // 等待 Vue 更新 DOM
                 await nextTick();
 
-                // 移除阴影以便截图纯净
                 const originalShadow = element.style.boxShadow;
                 element.style.boxShadow = 'none';
 
+                // **** 核心修改: 移除 useCORS: true ****
                 html2canvas(element, {
                     scale: parseInt(config.exportScale),
-                    useCORS: true,
-                    backgroundColor: null, // 透明背景
+                    // useCORS: true, // 移除此行，因为图片是 Base64 Data URL
+                    backgroundColor: null, 
                     logging: false
                 }).then(canvas => {
                     const link = document.createElement('a');
@@ -394,7 +384,6 @@
                     link.href = canvas.toDataURL('image/png');
                     link.click();
                     
-                    // 恢复状态
                     element.style.boxShadow = originalShadow;
                     isExporting.value = false;
                 });
