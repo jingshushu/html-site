@@ -42,149 +42,372 @@
         <div class="absolute top-0 right-0 bg-indigo-600 text-white text-xs px-2 py-0.5">预览</div>
     </div>
 
-    <div class="w-[400px] bg-gray-800 border-r border-gray-700 flex flex-col h-full shadow-lg">
-        <div class="flex-none p-4 border-b border-gray-700 relative">
-            <input type="file" id="pdfFile" ref="fileInput" accept="application/pdf" class="hidden" @change="loadPdf" />
-            <label for="pdfFile" class="cursor-pointer inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md shadow-sm text-sm">
-                上传PDF
+    <div class="w-[400px] bg-gray-800 border-r border-gray-700 flex flex-col h-full shadow-xl z-20 flex-shrink-0">
+        
+        <div class="p-4 border-b border-gray-700 bg-gray-800">
+            <h1 class="text-lg font-bold mb-3 text-white flex items-center gap-2">
+                <span class="text-indigo-500">❖</span> PPT 转 小红书封面
+            </h1>
+            <label class="group flex items-center justify-center w-full h-10 px-4 transition bg-gray-700 border border-gray-600 border-dashed rounded cursor-pointer hover:border-indigo-500 hover:bg-gray-600/50">
+                <span class="text-xs text-gray-300 group-hover:text-white" v-if="!status.processing">
+                    📂 点击上传 PDF
+                </span>
+                <span class="text-xs text-indigo-400 animate-pulse" v-else>
+                    正在解析 P{{ status.current }} / {{ status.total }}...
+                </span>
+                <input type="file" class="hidden" accept="application/pdf" @change="handleFileUpload" :disabled="status.processing">
             </label>
-            <button @click="downloadAll" class="ml-3 inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md shadow-sm text-sm">
-                下载全部
-            </button>
-            <button @click="exportToHtml" class="ml-3 inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md shadow-sm text-sm">
-                转换为小红书版式
-            </button>
         </div>
-        <div class="flex-1 p-4 overflow-auto custom-scroll">
-            <div v-for="(page, index) in pdfImages" :key="index" class="relative border border-gray-700 rounded-lg mt-4 drop-zone" :class="{'border-dashed border-indigo-500': !page.image}" @dragover.prevent="onDragOver" @dragleave.prevent="onDragLeave" @drop.prevent="onDrop($event, index)">
-                <div v-if="page.image" class="relative">
-                    <img :src="page.image" class="w-full rounded-md">
-                    <span class="slot-number absolute top-1 left-1 bg-indigo-500 text-white text-xs px-1 py-0.5 rounded">{{ index + 1 }}</span>
-                    <button @click="removeImage(index)" class="delete-btn absolute top-1 right-1 text-white bg-red-600 hover:bg-red-700 rounded px-1 py-0.5 text-xs">X</button>
+
+        <div class="flex-1 overflow-y-auto custom-scroll p-3 bg-gray-900/30">
+            <div class="flex justify-between items-center mb-2 px-1">
+                <h3 class="text-[10px] font-bold text-gray-500 uppercase">点击图片自动填入 / 拖拽</h3>
+                <span class="text-[10px] text-gray-500">{{ pdfImages.length }}P</span>
+            </div>
+            <div class="grid grid-cols-5 gap-1.5">
+                <div 
+                    v-for="(img, index) in pdfImages" 
+                    :key="index"
+                    class="bg-white rounded overflow-hidden cursor-pointer hover:ring-1 ring-indigo-500 relative group h-12 w-full"
+                    draggable="true"
+                    @dragstart="dragStart($event, img)"
+                    @click="autoFillSlot(img)"
+                    @mouseenter="hoverImage = img"
+                    @mouseleave="hoverImage = null"
+                >
+                    <img :src="img" class="w-full h-full object-cover">
+                    <div class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] px-1 rounded-tl">
+                        {{index+1}}
+                    </div>
                 </div>
-                <div v-else class="flex items-center justify-center w-full h-40 text-gray-500">
-                    拖拽图片或上传
+            </div>
+        </div>
+
+        <div class="h-[55%] bg-gray-800 border-t border-gray-700 overflow-y-auto custom-scroll p-4 space-y-5">
+            
+            <div>
+                <label class="text-[10px] font-bold text-gray-500 mb-2 block uppercase">布局模式</label>
+                <div class="grid grid-cols-3 gap-1">
+                    <button @click="changeLayout('mixed-col')" :class="config.layout==='mixed-col' ? 'bg-indigo-600 text-white border-transparent' : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600'" class="p-2 border rounded text-xs transition leading-tight">
+                        左9 右3<br><span class="scale-75 inline-block opacity-70">(1列 vs 1列)</span>
+                    </button>
+                    <button @click="changeLayout('col-2')" :class="config.layout==='col-2' ? 'bg-indigo-600 text-white border-transparent' : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600'" class="p-2 border rounded text-xs transition leading-tight">
+                        单列 2张<br><span class="scale-75 inline-block opacity-70">(上下拼接)</span>
+                    </button>
+                    <button @click="changeLayout('col-3')" :class="config.layout==='col-3' ? 'bg-indigo-600 text-white border-transparent' : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600'" class="p-2 border rounded text-xs transition leading-tight">
+                        单列 3张<br><span class="scale-75 inline-block opacity-70">(上下拼接)</span>
+                    </button>
                 </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-[10px] font-bold text-gray-500 mb-1 block uppercase">画布尺寸</label>
+                    <select v-model="config.aspectRatio" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200">
+                        <option value="auto">自适应 (推荐)</option>
+                        <option value="16/9">16:9 (宽屏)</option>
+                        <option value="3/4">3:4 (小红书)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-gray-500 mb-1 block uppercase">图片填充</label>
+                    <select v-model="config.objectFit" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200">
+                        <option value="contain">完整展示 (不裁切)</option>
+                        <option value="cover">填满格子 (裁切)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bg-gray-700/30 p-2 rounded border border-gray-700">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-[10px] font-bold text-gray-500 uppercase">标题区域</label>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="toggleTitle" v-model="config.showTitleHeader" class="mr-1.5 accent-indigo-500 h-3 w-3">
+                        <label for="toggleTitle" class="text-xs text-gray-300 cursor-pointer select-none">启用</label>
+                    </div>
+                </div>
+                
+                <div v-if="config.showTitleHeader" class="space-y-2">
+                    <input type="text" v-model="config.title" placeholder="主标题" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500 focus:border-indigo-500 outline-none">
+                    <input type="text" v-model="config.subtitle" placeholder="副标题" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500 focus:border-indigo-500 outline-none">
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <div class="flex items-center text-xs text-gray-400">
+                    <span class="w-10">边距</span>
+                    <input type="range" v-model.number="config.padding" min="0" max="60" class="flex-1 h-1 bg-gray-600 rounded-lg appearance-none">
+                </div>
+                <div class="flex items-center text-xs text-gray-400">
+                    <span class="w-10">间隔</span>
+                    <input type="range" v-model.number="config.gap" min="0" max="40" class="flex-1 h-1 bg-gray-600 rounded-lg appearance-none">
+                </div>
+                <div class="flex items-center text-xs text-gray-400">
+                    <span class="w-10">背景</span>
+                    <input type="color" v-model="config.bgColor" class="w-6 h-6 rounded border-0 p-0 bg-transparent cursor-pointer mr-2">
+                    <span class="text-[10px] opacity-50">(生成时背景不透明)</span>
+                </div>
+            </div>
+
+            <div class="pt-2">
+                <button @click="downloadImage" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-4 rounded transition shadow-lg text-sm flex items-center justify-center gap-2">
+                    <span>✨ 导出纯净图片</span>
+                    <select v-model="config.exportScale" @click.stop class="bg-indigo-700 text-white text-[10px] rounded px-1 py-0.5 border-none outline-none cursor-pointer">
+                        <option value="2">2x (高清)</option>
+                        <option value="3">3x (超清)</option>
+                    </select>
+                </button>
+            </div>
+            
+            <div class="text-center">
+                 <button @click="clearAllSlots" class="text-xs text-red-400 hover:text-red-300 underline">清空所有图片</button>
             </div>
         </div>
     </div>
 
-    <div class="flex-1 p-4 overflow-auto custom-scroll relative">
-        <div v-if="selectedImage" class="flex justify-center">
-            <img :src="selectedImage" ref="previewImage" class="max-h-[calc(100vh-8rem)] object-contain border border-gray-700 rounded-md">
-        </div>
-        <div v-else class="text-center text-gray-500">请选择页面预览</div>
-    </div>
+    <div class="flex-1 bg-[#e5e5e5] flex items-center justify-center p-8 overflow-auto relative bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxyZWN0IHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNMCAwTDggOFpNOCAwTDAgOFoiIHN0cm9rZT0iI2YyZjJmMiIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9zdmc+')]">
+        
+        <div 
+            id="canvas-area"
+            :class="{ 'exporting': isExporting }" 
+            class="bg-white shadow-2xl transition-all duration-300 flex flex-col box-border"
+            :style="canvasStyle"
+        >
+            <div v-if="config.showTitleHeader" class="mb-4 text-center shrink-0 px-4">
+                <h1 v-if="config.title" class="text-2xl font-bold tracking-wide text-gray-800">{{ config.title }}</h1>
+                <p v-if="config.subtitle" class="text-sm opacity-60 mt-1 text-gray-600">{{ config.subtitle }}</p>
+            </div>
 
+            <div class="flex-1 w-full h-full relative min-h-0">
+                
+                <div v-if="config.layout === 'mixed-col'" class="grid grid-cols-[1fr_3fr] h-full w-full min-h-0" :style="{ gap: config.gap + 'px' }">
+                    <div class="grid grid-cols-1 grid-rows-9 h-full min-h-0" :style="{ gap: config.gap + 'px' }">
+                        <div v-for="i in 9" :key="'L'+i" 
+                             class="drop-zone border border-dashed border-gray-300 relative group overflow-hidden flex items-center justify-center bg-transparent"
+                             :style="{ borderRadius: config.radius + 'px' }"
+                             @dragover.prevent @drop="handleDrop($event, i-1)" @dragenter="dragEnter" @dragleave="dragLeave">
+                             
+                            <div v-if="gridData[i-1]" class="w-full h-full relative flex items-center justify-center overflow-hidden">
+                                <img :src="gridData[i-1]" class="max-w-full max-h-full block" :style="{ objectFit: config.objectFit, width: config.objectFit==='cover'?'100%':'auto', height: config.objectFit==='cover'?'100%':'auto' }">
+                                <button @click="clearSlot(i-1)" class="delete-btn absolute top-0.5 right-0.5 bg-red-500 text-white rounded w-4 h-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 z-10">×</button>
+                            </div>
+                            <span v-else class="slot-number text-gray-300 text-[10px] select-none pointer-events-none">{{i}}</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 grid-rows-3 h-full min-h-0" :style="{ gap: config.gap + 'px' }">
+                        <div v-for="i in 3" :key="'R'+i" 
+                             class="drop-zone border border-dashed border-gray-300 relative group overflow-hidden flex items-center justify-center bg-transparent"
+                             :style="{ borderRadius: config.radius + 'px' }"
+                             @dragover.prevent @drop="handleDrop($event, 9 + i-1)" @dragenter="dragEnter" @dragleave="dragLeave">
+                             
+                            <div v-if="gridData[9+i-1]" class="w-full h-full relative flex items-center justify-center overflow-hidden">
+                                <img :src="gridData[9+i-1]" class="max-w-full max-h-full block" :style="{ objectFit: config.objectFit, width: config.objectFit==='cover'?'100%':'auto', height: config.objectFit==='cover'?'100%':'auto' }">
+                                <button @click="clearSlot(9+i-1)" class="delete-btn absolute top-1 right-1 bg-red-500 text-white rounded w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 z-10">×</button>
+                            </div>
+                            <span v-else class="slot-number text-gray-300 text-xs select-none pointer-events-none">重点{{i}}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="grid w-full h-full grid-cols-1 min-h-0" 
+                     :class="config.layout === 'col-2' ? 'grid-rows-2' : 'grid-rows-3'"
+                     :style="{ gap: config.gap + 'px' }">
+                     
+                     <div v-for="i in (config.layout === 'col-2' ? 2 : 3)" :key="'S'+i" 
+                          class="drop-zone border border-dashed border-gray-300 relative group overflow-hidden flex items-center justify-center bg-transparent"
+                          :style="{ borderRadius: config.radius + 'px' }"
+                          @dragover.prevent @drop="handleDrop($event, i-1)" @dragenter="dragEnter" @dragleave="dragLeave">
+                         
+                         <div v-if="gridData[i-1]" class="w-full h-full relative flex items-center justify-center overflow-hidden">
+                             <img :src="gridData[i-1]" class="max-w-full max-h-full block" :style="{ objectFit: config.objectFit, width: config.objectFit==='cover'?'100%':'auto', height: config.objectFit==='cover'?'100%':'auto' }">
+                             <button @click="clearSlot(i-1)" class="delete-btn absolute top-1 right-1 bg-red-500 text-white rounded w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 z-10">×</button>
+                         </div>
+                         <span v-else class="slot-number text-gray-300 text-xs select-none pointer-events-none">图{{i}}</span>
+                     </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
-const { createApp } = Vue;
+    const { createApp, ref, computed, reactive, nextTick } = Vue;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-createApp({
-    data() {
-        return {
-            pdfImages: [],
-            hoverImage: null,
-            selectedImage: null,
-            dragging: false,
-            exportMode: false,
-        };
-    },
-    methods: {
-        loadPdf(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const fileReader = new FileReader();
-            fileReader.onload = (e) => {
-                const typedarray = new Uint8Array(e.target.result);
-                pdfjsLib.getDocument(typedarray).promise.then(async (doc) => {
-                    for (let i = 1; i <= doc.numPages; i++) {
-                        const page = await doc.getPage(i);
-                        const viewport = page.getViewport({ scale: 2 });
+    createApp({
+        setup() {
+            const status = reactive({ processing: false, current: 0, total: 0 });
+            const isExporting = ref(false);
+            const pdfImages = ref([]);
+            const hoverImage = ref(null); // 悬停时的图片
+            
+            // 格子数据：根据最大可能的格子数（9+3=12）初始化
+            const gridData = ref(new Array(12).fill(null));
+            
+            const config = reactive({
+                layout: 'mixed-col', 
+                aspectRatio: 'auto', 
+                padding: 20,
+                gap: 8,
+                radius: 0,
+                bgColor: '#ffffff',
+                showTitleHeader: false,
+                title: 'PPT 概览',
+                subtitle: '',
+                objectFit: 'contain', 
+                exportScale: '2'
+            });
+
+            // 获取当前布局需要的格子数量
+            const currentSlotCount = computed(() => {
+                if (config.layout === 'mixed-col') return 12; // 9 + 3
+                if (config.layout === 'col-2') return 2;
+                if (config.layout === 'col-3') return 3;
+                return 12;
+            });
+
+            // 点击图片自动填入空位
+            const autoFillSlot = (imgData) => {
+                const maxSlots = currentSlotCount.value;
+                // 找到第一个是 null 的索引
+                const emptyIndex = gridData.value.findIndex((val, idx) => val === null && idx < maxSlots);
+                
+                if (emptyIndex !== -1) {
+                    gridData.value[emptyIndex] = imgData;
+                } else {
+                    // 如果满了，可以选择替换最后一个，或者不做操作。这里不做操作。
+                    // alert("当前布局格子已满，请点击格子右上角删除后再添加");
+                }
+            };
+
+            const canvasStyle = computed(() => {
+                const style = {
+                    padding: `${config.padding}px`,
+                    backgroundColor: config.bgColor,
+                };
+                
+                if (config.aspectRatio === 'auto') {
+                    style.width = '600px'; 
+                    style.height = 'auto'; 
+                    style.minHeight = '600px';
+                } else {
+                    const [w, h] = config.aspectRatio.split('/');
+                    style.aspectRatio = `${w} / ${h}`;
+                    style.height = '90%'; 
+                    style.width = 'auto';
+                }
+                return style;
+            });
+
+            const handleFileUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                status.processing = true;
+                status.current = 0;
+                pdfImages.value = [];
+                // 上传时不自动清空，防止用户误操作？或者清空，根据习惯。这里不清空。
+                
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    status.total = pdf.numPages;
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const viewport = page.getViewport({ scale: 2.0 }); 
                         const canvas = document.createElement('canvas');
-                        canvas.width = viewport.width;
+                        const context = canvas.getContext('2d');
                         canvas.height = viewport.height;
-                        const renderContext = {
-                            canvasContext: canvas.getContext('2d'),
-                            viewport: viewport,
-                        };
-                        await page.render(renderContext).promise;
-                        const imgData = canvas.toDataURL('image/png');
-                        this.pdfImages.push({ image: imgData });
+                        canvas.width = viewport.width;
+
+                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+                        pdfImages.value.push(canvas.toDataURL('image/jpeg', 0.9));
+                        status.current = i;
                     }
+                } catch (err) {
+                    alert("文件解析出错: " + err.message);
+                } finally {
+                    status.processing = false;
+                }
+            };
+
+            const dragStart = (e, imgData) => {
+                e.dataTransfer.effectAllowed = "copy";
+                e.dataTransfer.setData('text/plain', imgData);
+            };
+
+            const dragEnter = (e) => {
+                const zone = e.target.closest('.drop-zone');
+                if(zone) zone.classList.add('drag-over');
+            };
+
+            const dragLeave = (e) => {
+                const zone = e.target.closest('.drop-zone');
+                if(zone) zone.classList.remove('drag-over');
+            };
+
+            const handleDrop = (e, index) => {
+                const zone = e.target.closest('.drop-zone');
+                if(zone) zone.classList.remove('drag-over');
+                const imgData = e.dataTransfer.getData('text/plain');
+                if (imgData) gridData.value[index] = imgData;
+            };
+
+            const clearSlot = (index) => {
+                gridData.value[index] = null;
+            };
+
+            const clearAllSlots = () => {
+                gridData.value = new Array(12).fill(null);
+            }
+
+            const changeLayout = (newLayout) => {
+                config.layout = newLayout;
+                // 切换布局时，不保留之前的数据，或者保留？为了体验更好，保留数据
+                // 但如果从 12 切到 2，只有前2个会显示。
+            };
+
+            const downloadImage = async () => {
+                const element = document.getElementById('canvas-area');
+                
+                // 1. 进入导出模式（CSS 会隐藏虚线、删除按钮、序号）
+                isExporting.value = true;
+                
+                // 等待 Vue 更新 DOM
+                await nextTick();
+
+                // 移除阴影以便截图纯净
+                const originalShadow = element.style.boxShadow;
+                element.style.boxShadow = 'none';
+
+                html2canvas(element, {
+                    scale: parseInt(config.exportScale),
+                    useCORS: true,
+                    backgroundColor: null, // 透明背景
+                    logging: false
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `ppt-collage-${Date.now()}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                    
+                    // 恢复状态
+                    element.style.boxShadow = originalShadow;
+                    isExporting.value = false;
                 });
             };
-            fileReader.readAsArrayBuffer(file);
-        },
-        onDragOver(event) {
-            event.currentTarget.classList.add('border-dashed', 'border-indigo-500');
-        },
-        onDragLeave(event) {
-            event.currentTarget.classList.remove('border-dashed', 'border-indigo-500');
-        },
-        onDrop(event, index) {
-            event.currentTarget.classList.remove('border-dashed', 'border-indigo-500');
-            const file = event.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    this.pdfImages[index].image = e.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        },
-        removeImage(index) {
-            this.pdfImages.splice(index, 1);
-        },
-        downloadAll() {
-            this.exportMode = true;
-            this.$nextTick(() => {
-                const a = document.createElement('a');
-                this.pdfImages.forEach((page, idx) => {
-                    if (page.image) {
-                        a.href = page.image;
-                        a.download = `page_${idx + 1}.png`;
-                        a.click();
-                    }
-                });
-                this.exportMode = false;
-            });
-        },
-        async exportToHtml() {
-            this.exportMode = true;
-            this.$nextTick(async () => {
-                const htmlParts = [];
-                for (let page of this.pdfImages) {
-                    if (page.image) {
-                        const canvas = await html2canvas(this.$refs.previewImage, { allowTaint: true });
-                        const imgData = canvas.toDataURL('image/png');
-                        htmlParts.push(`<div style="text-align:center; margin: 20px;"><img src="${imgData}" style="max-width:100%"></div>`);
-                    }
-                }
-                const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>导出HTML</title></head><body>${htmlParts.join('')}</body></html>`;
-                const blob = new Blob([htmlContent], { type: 'text/html' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'export.html';
-                a.click();
-                URL.revokeObjectURL(url);
-                this.exportMode = false;
-            });
-        },
-        selectImage(index) {
-            this.selectedImage = this.pdfImages[index].image;
-        },
-        handleMouseEnter(page) {
-            this.hoverImage = page.image;
-        },
-        handleMouseLeave() {
-            this.hoverImage = null;
-        },
-    },
-}).mount('#app');
-</script>
 
+            return {
+                status, pdfImages, gridData, config, canvasStyle, isExporting, hoverImage,
+                handleFileUpload, dragStart, dragEnter, dragLeave, handleDrop, 
+                clearSlot, clearAllSlots, autoFillSlot, changeLayout, downloadImage,
+                currentSlotCount
+            };
+        }
+    }).mount('#app');
+</script>
 </body>
 </html>
